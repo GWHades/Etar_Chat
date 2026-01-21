@@ -2,6 +2,7 @@ import asyncio
 import discord
 import os
 import time
+import http # <--- IMPORTANTE PARA O FIX DO RENDER
 from discord.ext import commands, tasks
 from mcstatus import JavaServer
 import websockets
@@ -13,25 +14,26 @@ load_dotenv()
 # ================= CONFIGURAÇÃO GERAL =================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-WS_PORT = int(os.getenv("WS_PORT", 8080))
+# Pega a porta da Nuvem ou usa 8080 se for local
+WS_PORT = int(os.getenv("PORT", 8080)) 
+
 COMMAND_CHANNEL_ID = 1463166986652614835  # Canal Admin (Único para todos)
 SERVER_IMAGE = "https://i.imgur.com/jhYbb3a.png"
 ANTI_SPAM_SECONDS = 2
 
 # ================= ⚙️ CONFIGURAÇÃO DOS SERVIDORES =================
-# O "TOKEN" (chave do dicionário) deve ser igual ao da config.yml do plugin Java.
-# Configure aqui seus servidores:
+# O "TOKEN" (chave) deve ser igual ao da config.yml do plugin Java em cada servidor.
 
 SERVIDORES = {
     "token_survival": {
-        "nome": "Survival",           # Nome para comandos e exibição
+        "nome": "Survival",
         "ip": "127.0.0.1",            # IP do servidor
         "port": 25565,                # Porta do Minecraft
-        "chat_channel": 1463186334549282888,   # Canal de Chat deste servidor
-        "status_channel": 1463190910358520008  # Canal de Status deste servidor
+        "chat_channel": 1463186334549282888,   # Canal de Chat
+        "status_channel": 1463190910358520008  # Canal de Status
     },
     
-    # Exemplo de segundo servidor (Descomente e edite para usar):
+    # Exemplo de segundo servidor (RankUP):
     # "token_rankup": {
     #     "nome": "RankUP",
     #     "ip": "192.168.1.50",
@@ -75,13 +77,14 @@ async def enviar_para_servidor(token, payload):
             return False
     return False
 
-# ================= WEBSOCKET HANDLER =================
+# ================= WEBSOCKET HANDLER (COM FIX DE HTTP) =================
 
 async def websocket_handler(websocket):
-    print(f"🔌 Nova conexão recebida: {websocket.remote_address}")
-    server_token = None
-    
+    # O try/except aqui impede que pings HTTP derrubem o bot
     try:
+        print(f"🔌 Nova conexão recebida: {websocket.remote_address}")
+        server_token = None
+        
         async for message in websocket:
             # 1. Autenticação (Descobre qual servidor é)
             if message.startswith("AUTH|"):
@@ -113,17 +116,30 @@ async def websocket_handler(websocket):
                         embed = discord.Embed(description=text, color=discord.Color.green())
                         embed.set_author(name=player, icon_url=f"https://mc-heads.net/avatar/{player}/64")
                         await channel.send(embed=embed)
-
-    except: pass
+    
+    except websockets.exceptions.ConnectionClosedOK:
+        pass
+    except Exception as e:
+        # Filtra erros de HTTP que não sejam importantes
+        if "HTTP" not in str(e) and "HEAD" not in str(e):
+            print(f"⚠️ Erro na conexão: {e}")
     finally:
         if server_token and server_token in active_connections:
             del active_connections[server_token]
             nome = SERVIDORES[server_token]['nome']
             print(f"ℹ️ Servidor '{nome}' desconectado.")
 
+# --- FUNÇÃO CRÍTICA PARA RENDER/SQUARE/DISCLOUD ---
+async def process_request(connection, request):
+    """Responde aos Health Checks da nuvem para o bot não cair"""
+    if request.path == "/healthz" or request.method == "HEAD":
+        return http.HTTPStatus.OK, [], b"OK\n"
+    return None
+
 async def start_websocket():
     print(f"🚀 WebSocket Multi-Server na porta {WS_PORT}")
-    async with websockets.serve(websocket_handler, "0.0.0.0", WS_PORT):
+    # O 'process_request' aqui é o segredo para funcionar na nuvem
+    async with websockets.serve(websocket_handler, "0.0.0.0", WS_PORT, process_request=process_request):
         await asyncio.Future()
 
 # ================= STATUS LOOP (MULTI-SERVER) =================
@@ -160,7 +176,7 @@ async def atualizar_status():
         
         embed.set_footer(text=f"Atualizado às {time.strftime('%H:%M:%S')}")
 
-        # Lógica de Auto-Limpeza (Por canal)
+        # Lógica de Auto-Limpeza
         messages = []
         async for msg in channel.history(limit=5):
             if msg.author == bot.user: messages.append(msg)
@@ -185,7 +201,7 @@ async def player(ctx):
             break
     
     if not server_config:
-        # Se usado fora de um canal de chat, mostra de TODOS (resumido)
+        # Se usado fora de um canal de chat, mostra resumo
         if ctx.channel.id == COMMAND_CHANNEL_ID:
             msg = "**📊 Resumo Global:**\n"
             for token, config in SERVIDORES.items():
@@ -220,7 +236,7 @@ async def cmd(ctx, server_name: str = None, *, comando: str = None):
         await ctx.send("❌ Uso correto: `!cmd <nome_do_servidor> <comando>`\nEx: `!cmd survival say Ola`")
         return
 
-    # Procura o token baseado no nome (Case insensitive)
+    # Procura o token baseado no nome
     target_token = None
     for token, config in SERVIDORES.items():
         if config["nome"].lower() == server_name.lower():
@@ -272,7 +288,9 @@ async def on_message(message):
 # ================= MAIN =================
 
 async def main():
-    if not TOKEN: return
+    if not TOKEN: 
+        print("❌ ERRO: Token não configurado.")
+        return
     await asyncio.gather(start_websocket(), bot.start(TOKEN))
 
 if __name__ == "__main__":
