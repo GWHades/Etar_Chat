@@ -24,8 +24,8 @@ ANTI_SPAM_SECONDS = 2
 SERVIDORES = {
     "Cobblemon": {
         "nome": "Cobble",
-        "ip": "elgae-sp1-m005.elgaehost.com.br",
-        "port": 25571,
+        "ip": "schools-chamber.gl.joinmc.link",
+        "port": 25565,
         "chat_channel": 1463186334549282888,
         "status_channel": 1463190910358520008
     },
@@ -290,4 +290,5 @@ if __name__ == "__main__":
     try: asyncio.run(main())
 
     except KeyboardInterrupt: pass
+
 
