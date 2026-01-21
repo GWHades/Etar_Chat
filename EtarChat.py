@@ -22,10 +22,10 @@ ANTI_SPAM_SECONDS = 2
 
 # ================= ⚙️ CONFIGURAÇÃO DOS SERVIDORES =================
 SERVIDORES = {
-    "ETAR_CHAT_TOKEN": {
-        "nome": "Survival",
-        "ip": "127.0.0.1",
-        "port": 25565,
+    "Coblemon": {
+        "nome": "Cobble",
+        "ip": "elgae-sp1-m005.elgaehost.com.br",
+        "port": 25571,
         "chat_channel": 1463186334549282888,
         "status_channel": 1463190910358520008
     },
@@ -288,4 +288,5 @@ async def main():
 
 if __name__ == "__main__":
     try: asyncio.run(main())
+
     except KeyboardInterrupt: pass
