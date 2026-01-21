@@ -22,7 +22,7 @@ ANTI_SPAM_SECONDS = 2
 
 # ================= ⚙️ CONFIGURAÇÃO DOS SERVIDORES =================
 SERVIDORES = {
-    "token_survival": {
+    "ETAR_CHAT_TOKEN": {
         "nome": "Survival",
         "ip": "127.0.0.1",
         "port": 25565,
