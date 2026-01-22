@@ -96,8 +96,6 @@ async def atualizar_embed_status(config, data):
         estado = "Crítico (Lag)"
 
     embed = discord.Embed(title=f"📊 Status: {config['nome']}", color=cor)
-    embed.add_field(name="📶 TPS / Performance", value=f"**{tps}** ({estado})", inline=True)
-    embed.add_field(name="💾 RAM (Memória)", value=f"{ram_used}MB / {ram_max}MB", inline=True)
     embed.add_field(name="👥 Jogadores", value=f"{players}/{max_players}", inline=True)
     embed.add_field(name="⏱️ Tempo Online", value=f"{uptime}", inline=False)
     
@@ -348,5 +346,6 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
 
 
