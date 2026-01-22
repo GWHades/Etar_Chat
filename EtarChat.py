@@ -26,10 +26,10 @@ ANTI_SPAM_SECONDS = 2
 SERVIDORES = {
     "Cobblemon": {  
         "nome": "Cobblemon",
-        "ip": "schools-chamber.gl.joinmc.link",
-        "port": 25565,
-        "chat_channel": 1463186334549282888,   # Canal onde sai o bate-papo
-        "status_channel": 1463190910358520008  # Canal onde fica o Embed de Status
+        "ip": "elgae-sp1-m005.elgaehost.com.br",
+        "port": 25571,
+        "chat_channel": 1463957173506801694,   # Canal onde sai o bate-papo
+        "status_channel": 1463957324543688861  # Canal onde fica o Embed de Status
     },
     # Você pode adicionar mais servidores aqui...
 }
@@ -348,3 +348,4 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
