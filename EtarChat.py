@@ -20,7 +20,7 @@ ANTI_SPAM_SECONDS = 2
 
 # IMPORTANTE: A chave deste dicionário deve ser EXATAMENTE a senha definida no mod Java
 SERVIDORES = {
-    "senha_padrao": {  # <--- Mude "senha_padrao" para o token que está no config do Mod
+    "Cobblemon": {  # <--- Mude "senha_padrao" para o token que está no config do Mod
         "nome": "Cobblemon",
         "ip": "schools-chamber.gl.joinmc.link",
         "port": 25565,
@@ -270,3 +270,4 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
