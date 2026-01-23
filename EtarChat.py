@@ -22,22 +22,22 @@ SERVER_IMAGE = "https://i.imgur.com/jhYbb3a.png" # Imagem para o Embed Offline
 ANTI_SPAM_SECONDS = 2
 
 # ================= 🌍 CONFIGURAÇÃO DOS SERVIDORES =================
-# A chave (ex: "senha_segura_123") deve ser IGUAL ao WEBSOCKET_TOKEN no config do Mod.
+# ATENÇÃO: A chave (ex: "SuaSenhaSegura123") deve ser IGUAL ao TOKEN/SENHA no config do Mod.
 SERVIDORES = {
-    "Cobblemon": {  
+    "Cobblemon": {   # <--- AQUI DEVE SER A SENHA/TOKEN, NÃO O NOME "Cobblemon" SE A SENHA FOR DIFERENTE
         "nome": "Cobblemon",
         "ip": "elgae-sp1-m005.elgaehost.com.br",
         "port": 25571,
         "chat_channel": 1463957173506801694,   # Canal onde sai o bate-papo
         "status_channel": 1463957324543688861  # Canal onde fica o Embed de Status
     },
-    # Você pode adicionar mais servidores aqui...
+    # Adicione outros servidores aqui se necessário
 }
 
 # =================================================================
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True # Obrigatório estar ativado no Developer Portal também
 intents.members = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -65,7 +65,7 @@ async def enviar_para_servidor(token, json_payload):
             await ws.send_str(json.dumps(json_payload))
             return True
         except Exception as e:
-            print(f"Erro ao enviar para {token}: {e}")
+            print(f"❌ Erro ao enviar para {token}: {e}")
             return False
     return False
 
@@ -79,21 +79,18 @@ async def atualizar_embed_status(config, data):
 
     # Extrai dados do JSON enviado pelo Mod
     tps = float(data.get("tps", 20.0))
-    ram_used = data.get("ram_used", 0)
-    ram_max = data.get("ram_max", 0)
+    # ram_used = data.get("ram_used", 0) # Não usado no embed atual, mas disponível
+    # ram_max = data.get("ram_max", 0)
     uptime = data.get("uptime", "0h 0m")
     players = data.get("players", 0)
     max_players = data.get("max_players", 0)
 
     # Define cor baseada na performance (TPS)
     cor = discord.Color.green()
-    estado = "Excelente"
     if tps < 18.0: 
         cor = discord.Color.orange()
-        estado = "Instável"
     if tps < 15.0: 
         cor = discord.Color.red()
-        estado = "Crítico (Lag)"
 
     embed = discord.Embed(title=f"📊 Status: {config['nome']}", color=cor)
     embed.add_field(name="👥 Jogadores", value=f"{players}/{max_players}", inline=True)
@@ -113,7 +110,7 @@ async def atualizar_embed_status(config, data):
             if len(messages) > 1:
                 for old in messages[1:]: await old.delete()
     except Exception as e:
-        print(f"Erro ao atualizar embed rico: {e}")
+        print(f"⚠️ Erro ao atualizar embed rico: {e}")
 
 # ================= 🔌 WEBSOCKET HANDLER =================
 
@@ -122,7 +119,7 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    print(f"🔌 Nova conexão de: {request.remote}")
+    print(f"🔌 Tentativa de conexão de: {request.remote}")
     server_token = None
 
     try:
@@ -135,13 +132,14 @@ async def websocket_handler(request):
                     # 1. Autenticação
                     if msg_type == "AUTH":
                         token_recebido = data.get("token")
+                        # Verifica se o token recebido existe nas chaves do dicionário SERVIDORES
                         if token_recebido in SERVIDORES:
                             server_token = token_recebido
                             active_connections[server_token] = ws
                             nome = SERVIDORES[server_token]['nome']
-                            print(f"✅ Servidor '{nome}' Autenticado!")
+                            print(f"✅ Servidor '{nome}' Autenticado com sucesso!")
                         else:
-                            print(f"❌ Token inválido: {token_recebido}")
+                            print(f"❌ Token inválido recebido: {token_recebido}")
                             await ws.close()
                         continue
                     
@@ -151,13 +149,16 @@ async def websocket_handler(request):
                     if msg_type == "CHAT_MC":
                         player = data.get("user")
                         text = data.get("message")
-                        config = SERVIDORES[server_token]
+                        print(f"💬 MC -> Discord ({SERVIDORES[server_token]['nome']}): {player}: {text}") # Debug
                         
+                        config = SERVIDORES[server_token]
                         channel = bot.get_channel(config["chat_channel"])
                         if channel:
                             embed = discord.Embed(description=text, color=discord.Color.green())
                             embed.set_author(name=player, icon_url=f"https://mc-heads.net/avatar/{player}/64")
                             await channel.send(embed=embed)
+                        else:
+                            print(f"⚠️ Canal de chat não encontrado para {config['nome']}")
 
                     # 3. Recebe Status Rico (Do Mod)
                     elif msg_type == "STATUS_UPDATE":
@@ -178,12 +179,6 @@ async def websocket_handler(request):
             del active_connections[server_token]
             nome = SERVIDORES.get(server_token, {}).get('nome', 'Desconhecido')
             print(f"ℹ️ Servidor '{nome}' desconectado.")
-            
-            # Opcional: Avisar no chat que o servidor caiu/fechou conexão
-            # config = SERVIDORES.get(server_token)
-            # if config:
-            #     channel = bot.get_channel(config["status_channel"])
-            #     if channel: await channel.send("🔴 Servidor desconectou do WebSocket.")
 
     return ws
 
@@ -203,7 +198,9 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', WS_PORT)
     await site.start()
     print(f"🚀 Web Server rodando na porta {WS_PORT}")
-    while True: await asyncio.sleep(3600)
+    # Loop infinito para manter o servidor web rodando
+    while True:
+        await asyncio.sleep(3600)
 
 # ================= 🔄 LOOP DE STATUS (FALLBACK) =================
 
@@ -211,11 +208,10 @@ async def start_web_server():
 async def loop_status_fallback():
     """Loop secundário para detectar offline ou servidores sem o mod"""
     for token, config in SERVIDORES.items():
-        # Se o servidor estiver conectado via WebSocket, deixamos o Mod atualizar o status (é mais preciso)
+        # Se estiver conectado via WebSocket, pulamos (o Mod atualiza)
         if token in active_connections:
             continue
 
-        # Se NÃO estiver conectado, usamos o método antigo para mostrar Offline ou status básico
         channel_id = config.get("status_channel")
         if not channel_id: continue
         channel = bot.get_channel(channel_id)
@@ -225,7 +221,7 @@ async def loop_status_fallback():
         nome = config["nome"]
 
         if data:
-            # Servidor online, mas sem mod de chat conectado
+            # Servidor online, mas sem mod conectado
             try:
                 p_online = data.players.online
                 p_max = data.players.max
@@ -234,7 +230,7 @@ async def loop_status_fallback():
             embed = discord.Embed(title=f"🟡 {nome} Online (Sem Chat)", color=discord.Color.gold())
             embed.add_field(name="Jogadores", value=f"{p_online}/{p_max}", inline=True)
             embed.add_field(name="Ping", value=f"{int(latency)} ms", inline=True)
-            embed.set_footer(text="Conexão WebSocket: Desconectada")
+            embed.set_footer(text="Conexão WebSocket: Desconectada (Chat Inativo)")
         else:
             # Servidor Offline
             embed = discord.Embed(title=f"🔴 {nome} Offline", description="Servidor desligado.", color=discord.Color.red())
@@ -254,7 +250,6 @@ async def loop_status_fallback():
 
 @bot.command()
 async def player(ctx):
-    # Procura qual servidor está vinculado a este canal
     server_config = None
     for token, config in SERVIDORES.items():
         if ctx.channel.id == config["chat_channel"]:
@@ -265,7 +260,6 @@ async def player(ctx):
         await ctx.send("Este canal não está vinculado a nenhum servidor.")
         return
 
-    # Tenta pegar lista via Query (MCStatus)
     data, _ = await get_mc_status(server_config["ip"], server_config["port"])
     if data:
         names = getattr(data.players, 'names', []) or []
@@ -284,13 +278,14 @@ async def cmd(ctx, server_name: str = None, *, comando: str = None):
         return
 
     target_token = None
+    # Busca o token pelo nome do servidor
     for token, config in SERVIDORES.items():
         if config["nome"].lower() == server_name.lower():
             target_token = token
             break
     
     if target_token:
-        # Envia comando via JSON (Necessita implementação futura no Mod)
+        # Envia comando via JSON
         payload = {"type": "CONSOLE_CMD", "command": comando}
         enviado = await enviar_para_servidor(target_token, payload)
         
@@ -301,11 +296,12 @@ async def cmd(ctx, server_name: str = None, *, comando: str = None):
     else:
         await ctx.send("❌ Servidor não encontrado na config.")
 
-# ================= 🚀 INICIALIZAÇÃO =================
+# ================= 🚀 EVENTOS & INICIALIZAÇÃO =================
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot Online: {bot.user}")
+    print(f"✅ Bot Online no Discord como: {bot.user}")
+    print("⏳ Iniciando loops...")
     if not loop_status_fallback.is_running():
         loop_status_fallback.start()
 
@@ -313,39 +309,55 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot: return
 
-    # Verifica se a mensagem veio de um canal de chat configurado
+    # --- DEBUG START: Apague isso depois que funcionar ---
+    print(f"📩 MSG Recebida no Discord: '{message.content}' no canal {message.channel.id}")
+    # --- DEBUG END ---
+
     target_token = None
+    # Procura qual servidor pertence a este canal
     for token, config in SERVIDORES.items():
         if message.channel.id == config["chat_channel"]:
             target_token = token
             break
     
-    # Se for mensagem de chat (e não comando), envia para o Minecraft
+    # Se encontrou um servidor vinculado e NÃO é comando
     if target_token and not message.content.startswith("!"):
-        now = time.time()
-        # Anti-spam simples
-        if now - last_message_time.get(message.author.id, 0) >= ANTI_SPAM_SECONDS:
-            last_message_time[message.author.id] = now
-            
-            payload = {
-                "type": "CHAT_DISCORD",
-                "user": message.author.display_name,
-                "message": message.content
-            }
-            await enviar_para_servidor(target_token, payload)
+        print(f"🔎 Canal vinculado ao servidor: {SERVIDORES[target_token]['nome']}")
+        
+        if target_token in active_connections:
+            # Anti-spam
+            now = time.time()
+            if now - last_message_time.get(message.author.id, 0) >= ANTI_SPAM_SECONDS:
+                last_message_time[message.author.id] = now
+                
+                payload = {
+                    "type": "CHAT_DISCORD",
+                    "user": message.author.display_name,
+                    "message": message.content
+                }
+                sucesso = await enviar_para_servidor(target_token, payload)
+                if sucesso:
+                    print("📤 Enviado para o Minecraft via WebSocket!")
+                else:
+                    print("❌ Falha ao enviar para o WebSocket (erro interno).")
+            else:
+                print("⏳ Mensagem ignorada pelo Anti-Spam.")
+        else:
+            print(f"❌ O servidor '{SERVIDORES[target_token]['nome']}' NÃO está conectado ao WebSocket.")
+            # Opcional: Avisar no Discord que o server não está ouvindo
+            # await message.add_reaction("🔌") 
 
     await bot.process_commands(message)
 
 async def main():
     if not TOKEN: 
-        print("❌ ERRO: Token do Discord não configurado no .env")
+        print("❌ ERRO CRÍTICO: Token do Discord não configurado no .env")
         return
+    
+    print("🚀 Iniciando sistema...")
     # Roda servidor Web e Bot simultaneamente
     await asyncio.gather(start_web_server(), bot.start(TOKEN))
 
 if __name__ == "__main__":
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
-
-
-
