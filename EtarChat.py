@@ -25,8 +25,9 @@ ANTI_SPAM_SECONDS = 0.5
 # Coloque aqui os IDs dos cargos do Discord que podem usar o !cmd
 # (Administradores do servidor têm permissão automática)
 ALLOWED_ROLE_IDS = [
-    123456789012345678,  # Exemplo: ID do Cargo Dono
-    111222333444555666,  # Exemplo: ID do Cargo Moderador
+    1372562722285162508,  # dev
+    1372562830947258388,  # Exemplo: admin
+    1386368759479926804, # header
     # Adicione quantos quiser...
 ]
 
@@ -305,3 +306,4 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
