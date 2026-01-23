@@ -17,7 +17,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 # Porta do servidor Web (Pega do ambiente ou usa 8080 local)
 WS_PORT = int(os.getenv("PORT", 8080))
 
-COMMAND_CHANNEL_ID = 1463166986652614835  # ID do canal para comandos de admin (!cmd)
+COMMAND_CHANNEL_ID = 1463959802127454312  # ID do canal para comandos de admin (!cmd)
 SERVER_IMAGE = "https://i.imgur.com/jhYbb3a.png" # Imagem para o Embed Offline
 ANTI_SPAM_SECONDS = 2
 
@@ -361,6 +361,7 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
 
 
 
