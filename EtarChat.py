@@ -40,6 +40,13 @@ SERVIDORES = {
         "chat_channel": 1463957173506801694,
         "status_channel": 1463957324543688861
     },
+    "teste": {
+        "nome": "teste",
+        "ip": "127.0.0.1",
+        "port": 25565,
+        "chat_channel": 1463186334549282888,
+        "status_channel": 1463190910358520008
+    },
 }
 
 # =================================================================
@@ -306,4 +313,5 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
+
 
