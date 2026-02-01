@@ -14,21 +14,20 @@ load_dotenv()
 # ================= ⚙️ CONFIGURAÇÃO GERAL =================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-# Porta do servidor Web (Pega do ambiente ou usa 8080 local)
 WS_PORT = int(os.getenv("PORT", 8080))
 
 COMMAND_CHANNEL_ID = 1463959802127454312
 SERVER_IMAGE = "https://i.imgur.com/jhYbb3a.png"
 ANTI_SPAM_SECONDS = 0.5
 
+# Configuração de Throttling (Delay mínimo entre atualizações de status)
+STATUS_UPDATE_INTERVAL = 15  # segundos
+
 # --- 🔒 LISTA DE CARGOS PERMITIDOS ---
-# Coloque aqui os IDs dos cargos do Discord que podem usar o !cmd
-# (Administradores do servidor têm permissão automática)
 ALLOWED_ROLE_IDS = [
     1372562722285162508,  # dev
-    1372562830947258388,  # Exemplo: admin
-    1386368759479926804, # header
-    # Adicione quantos quiser...
+    1372562830947258388,  # admin
+    1386368759479926804,  # header
 ]
 
 # ================= 🌍 CONFIGURAÇÃO DOS SERVIDORES =================
@@ -60,6 +59,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 active_connections = {}
 last_message_time = {}
 
+# Caches para otimização
+status_message_cache = {} # {server_token: message_id}
+last_status_update_time = {} # {server_token: timestamp}
+
 # ================= 🛠️ FUNÇÕES AUXILIARES =================
 
 async def get_mc_status(ip, port):
@@ -81,7 +84,14 @@ async def enviar_para_servidor(token, json_payload):
             return False
     return False
 
-async def atualizar_embed_status(config, data):
+async def atualizar_embed_status(config, data, token):
+    # 1. THROTTLING: Impede atualizações muito rápidas (evita lag)
+    now = time.time()
+    last_time = last_status_update_time.get(token, 0)
+    if now - last_time < STATUS_UPDATE_INTERVAL:
+        return # Pula esta atualização
+    last_status_update_time[token] = now
+
     channel_id = config.get("status_channel")
     if not channel_id: return
 
@@ -105,13 +115,35 @@ async def atualizar_embed_status(config, data):
     embed.set_thumbnail(url=SERVER_IMAGE)
     embed.set_footer(text=f"Última atualização: {time.strftime('%H:%M:%S')}")
 
+    # 2. CACHE INTELIGENTE: Tenta editar a mensagem conhecida primeiro
+    message = None
+    msg_id = status_message_cache.get(token)
+
+    if msg_id:
+        try:
+            message = await channel.fetch_message(msg_id)
+        except discord.NotFound:
+            status_message_cache.pop(token, None) # Mensagem foi deletada manualmente
+        except Exception:
+            pass # Erro de rede, tenta o fallback
+
+    # Fallback: Se não tem cache ou falhou, busca no histórico (mais lento)
+    if not message:
+        try:
+            async for msg in channel.history(limit=5):
+                if msg.author == bot.user:
+                    message = msg
+                    status_message_cache[token] = msg.id
+                    break
+        except Exception:
+            pass
+
     try:
-        messages = [msg async for msg in channel.history(limit=5) if msg.author == bot.user]
-        if not messages: await channel.send(embed=embed)
+        if message:
+            await message.edit(embed=embed)
         else:
-            await messages[0].edit(embed=embed)
-            if len(messages) > 1:
-                for old in messages[1:]: await old.delete()
+            sent_msg = await channel.send(embed=embed)
+            status_message_cache[token] = sent_msg.id
     except Exception as e:
         print(f"⚠️ Erro ao atualizar embed: {e}")
 
@@ -151,11 +183,16 @@ async def websocket_handler(request):
                         if channel:
                             embed = discord.Embed(description=text, color=discord.Color.green())
                             embed.set_author(name=player, icon_url=f"https://mc-heads.net/avatar/{player}/64")
-                            await channel.send(embed=embed)
+                            
+                            # 🔥 CORREÇÃO PRINCIPAL: create_task
+                            # Envia em segundo plano para NÃO travar a leitura do WebSocket
+                            asyncio.create_task(channel.send(embed=embed))
 
                     elif msg_type == "STATUS_UPDATE":
                         config = SERVIDORES.get(server_token)
-                        if config: await atualizar_embed_status(config, data)
+                        if config:
+                            # Envia em segundo plano também
+                            asyncio.create_task(atualizar_embed_status(config, data, server_token))
 
                 except Exception as e:
                     print(f"⚠️ Erro processando MSG: {e}")
@@ -177,20 +214,22 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', WS_PORT)
     await site.start()
     print(f"🚀 Web Server rodando na porta {WS_PORT}")
+    # Mantém o servidor rodando
     while True: await asyncio.sleep(3600)
 
-# ================= 🔄 LOOP DE STATUS =================
+# ================= 🔄 LOOP DE STATUS (FALLBACK) =================
 
 @tasks.loop(seconds=60)
 async def loop_status_fallback():
     for token, config in SERVIDORES.items():
-        if token in active_connections: continue
+        if token in active_connections: continue # Só checa se não tiver WS conectado
 
         channel_id = config.get("status_channel")
         if not channel_id: continue
         channel = bot.get_channel(channel_id)
         if not channel: continue
 
+        # Executa query em thread separada para não bloquear
         data, _ = await get_mc_status(config["ip"], config["port"])
         nome = config["nome"]
 
@@ -201,10 +240,17 @@ async def loop_status_fallback():
             embed = discord.Embed(title=f"🔴 {nome} Offline", description="Servidor desligado.", color=discord.Color.red())
             embed.set_footer(text=f"Verificado às {time.strftime('%H:%M:%S')}")
         
+        # Lógica simples de envio/edição para o fallback
         try:
-            messages = [msg async for msg in channel.history(limit=5) if msg.author == bot.user]
-            if not messages: await channel.send(embed=embed)
-            else: await messages[0].edit(embed=embed)
+            # Tenta editar a última mensagem do bot
+            updated = False
+            async for msg in channel.history(limit=3):
+                if msg.author == bot.user:
+                    await msg.edit(embed=embed)
+                    updated = True
+                    break
+            if not updated:
+                await channel.send(embed=embed)
         except: pass
 
 # ================= 💬 COMANDOS DISCORD =================
@@ -229,10 +275,9 @@ async def player(ctx):
     else:
         await ctx.send(f"🔴 {server_config['nome']} parece estar Offline.")
 
-# --- COMANDO CMD ATUALIZADO (VERIFICA CARGOS) ---
 @bot.command()
 async def cmd(ctx, arg1: str = None, *, arg2: str = None):
-    # 1. Verificação de Permissão (Admin OU Cargo Permitido)
+    # Permissões
     is_admin = ctx.author.guild_permissions.administrator
     has_allowed_role = any(role.id in ALLOWED_ROLE_IDS for role in ctx.author.roles)
 
@@ -240,14 +285,13 @@ async def cmd(ctx, arg1: str = None, *, arg2: str = None):
         await ctx.send("⛔ **Acesso Negado:** Você não tem permissão para usar este comando.")
         return
 
-    # 2. Lógica do Comando
     target_token = None
     comando = None
 
     for token, config in SERVIDORES.items():
         if ctx.channel.id == config["chat_channel"]:
             target_token = token
-            if arg1: comando = f"{arg1} {arg2}" if arg2 else arg1
+            comando = f"{arg1} {arg2}" if arg2 else arg1
             break
     
     if not target_token and arg1 and arg2:
@@ -281,14 +325,12 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot: return
 
-    # Verifica se a mensagem veio de um canal de chat configurado
     target_token = None
     for token, config in SERVIDORES.items():
         if message.channel.id == config["chat_channel"]:
             target_token = token
             break
     
-    # Se for mensagem de chat (e não comando), envia para o Minecraft
     if target_token and not message.content.startswith("!"):
         now = time.time()
         if now - last_message_time.get(message.author.id, 0) >= ANTI_SPAM_SECONDS:
@@ -298,6 +340,7 @@ async def on_message(message):
                 "user": message.author.display_name,
                 "message": message.content
             }
+            # Envia para o WebSocket (geralmente rápido, não precisa de create_task aqui mas poderia)
             await enviar_para_servidor(target_token, payload)
 
     await bot.process_commands(message)
@@ -313,5 +356,3 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try: asyncio.run(main())
     except KeyboardInterrupt: pass
-
-
